@@ -45,11 +45,14 @@ int main(int argc, char* argv[])
     configs["workers"] = "1";  // default worker count: 1
     configs["timeout"] = "300"; // default timeout: 300s
     configs["command"] = "";
-    configs["output"] = "output.log";
+    configs["output"] = "";
     configs["group"] = ":";
+    configs["env"] = "";
 
     std::vector<std::string> commands;
     std::vector<std::string> groups;
+    std::vector<std::string> envs;
+    bool isQuiet = true;
     
     for (int argn = 1; argn < argc; argn++) {
         std::string config = argv[argn];
@@ -59,15 +62,35 @@ int main(int argc, char* argv[])
         configs[key] = value;
         if(key == "command"){
             commands.push_back(configs[key]);
+            groups.push_back(" ");
+            envs.push_back("");
         }
-        if(key == "group"){
-            groups.push_back(configs[key]);
+        else if(key == "group"){
+            groups[groups.size() - 1] = configs[key];
         }
+        else if(key == "env"){
+            envs[envs.size() - 1] = configs[key];
+        }
+    }
+    if(commands.size() > groups.size()) {
+        groups.push_back(" ");
+    }
+    if(commands.size() > envs.size()) {
+        envs.push_back("");
     }
 
     if(configs["command"] == "") {
         std::cout<<"Need command!" << std::endl;
         return -1;
+    }
+
+    if(configs["output"] == "") {
+        std::cout<<"Run order in vebosity mode! Output file is output.log!" << std::endl;
+        configs["output"] = "output.log";
+        isQuiet = false;
+    }
+    else {
+        std::cout<<"Run order in quiet mode! See details in output file..." << std::endl;
     }
     
     if(configs["output"].find(".log") == configs["output"].npos)
@@ -113,18 +136,16 @@ int main(int argc, char* argv[])
         return 1;
     }
 
-    
-    //If no group defined, use first command
-    if(groups.size() == 0){
-        if (rpc.CallFunc("Task", configs["group"], commands[0]) !=
-            tirpc::rpc::RpcCallError::Success) {
-            std::cout<<"CallFunc Task failed!" << std::endl;
+
+    for(int ind_commands = 0; ind_commands < commands.size(); ind_commands++){
+        if (groups[ind_commands] == "all") {
+            if (rpc.CallFunc("Task", commands[ind_commands], std::string(":"), envs[ind_commands]) !=
+                tirpc::rpc::RpcCallError::Success) {
+                std::cout<<"CallFunc Task failed!" << std::endl;
+            }
         }
-    }
-    else
-    {
-        for(int ind_groups = 0; ind_groups < groups.size(); ind_groups++){
-            if (rpc.CallFunc("Task", groups[ind_groups], commands[ind_groups]) !=
+        else {
+            if (rpc.CallFunc("Task", commands[ind_commands], groups[ind_commands], envs[ind_commands]) !=
                 tirpc::rpc::RpcCallError::Success) {
                 std::cout<<"CallFunc Task failed!" << std::endl;
             }
@@ -141,7 +162,9 @@ int main(int argc, char* argv[])
                     <<               log              << std::endl
                     << "----------------------------" << std::endl
                     << std::endl; // Add one more split line.
-                std::cout << ss.str();
+                if (!isQuiet) {
+                    std::cout << ss.str();
+                }
                 ofs << std::endl << log;
 
                 worker_count++;
